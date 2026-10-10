@@ -10,6 +10,7 @@ A small Python and Streamlit application for exploring instrument CSV exports. T
 - Coerce numeric values, remove missing/non-finite rows, sort x values, and average repeated x values.
 - Plot the cleaned signal interactively and mark detected peaks.
 - Set minimum peak prominence and spacing.
+- Optionally estimate and subtract a smooth asymmetric-least-squares (AsLS) baseline, with a raw/baseline/corrected overlay and export of all three signals.
 - Integrate peaks above a straight line between their prominence bases using trapezoidal integration.
 - Download the cleaned signal and peak table as CSV files.
 - Run numerical unit tests with pytest.
@@ -19,16 +20,20 @@ A small Python and Streamlit application for exploring instrument CSV exports. T
 Python 3.10 or newer is required.
 
 ```bash
-python -m venv .venv
 # Windows PowerShell
-.venv\Scripts\Activate.ps1
+py -3.13 -m venv .venv
+\.venv\Scripts\python.exe -m pip install -r requirements.txt
 # macOS / Linux: source .venv/bin/activate
+python3 -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
 ## Run the app
 
 ```bash
+# Windows PowerShell
+\.venv\Scripts\python.exe -m streamlit run app.py
+# macOS / Linux
 streamlit run app.py
 ```
 
@@ -37,6 +42,9 @@ Choose **Use bundled demonstration chromatogram** to try the app without an inst
 ## Run tests
 
 ```bash
+# Windows PowerShell
+\.venv\Scripts\python.exe -m pytest
+# macOS / Linux
 pytest
 ```
 
@@ -51,11 +59,10 @@ tests/                    Numerical unit tests
 
 ## Scientific notes and limitations
 
-Peak detection uses SciPy local maxima and prominence. Each area is the trapezoidal integral of signal above a straight baseline joining that peak's prominence bases; it is reported in x-units × signal-units. This is a transparent exploratory method, not a validated regulated workflow. Baseline choice, co-elution, noise, and instrument-specific exports can materially change results. Review settings and inspect the plot before interpreting areas. CSV parsing expects a header row and does not handle every vendor-specific preamble or locale-specific decimal format.
+Peak detection uses SciPy local maxima and prominence. Each area is the trapezoidal integral of signal above a straight baseline joining that peak's prominence bases; it is reported in x-units × signal-units. Optional AsLS correction estimates a smooth lower baseline for positive-going peaks and works best with roughly evenly spaced x values. It is exploratory and does not replace review of raw and corrected signals. Baseline choice, co-elution, noise, and instrument-specific exports can materially change results. This is not a validated regulated workflow. CSV parsing expects a header row and does not handle every vendor-specific preamble or locale-specific decimal format.
 
 ## Roadmap
 
-1. Add configurable baseline correction and compare raw versus corrected signal.
-2. Add calibration curves, R², and LOD / LOQ calculations with validated examples.
-3. Support vendor preambles, more export conventions, and user-selected integration boundaries.
-4. Add downloadable PDF reports, expanded scientific validation, and portfolio documentation.
+1. Add calibration curves, R², and LOD / LOQ calculations with validated examples.
+2. Support vendor preambles, more export conventions, and user-selected integration boundaries.
+3. Add downloadable PDF reports, expanded scientific validation, and portfolio documentation.

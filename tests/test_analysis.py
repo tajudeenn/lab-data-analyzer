@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from lab_analyzer.analysis import clean_signal, detect_peaks, read_csv_bytes
+from lab_analyzer.baseline import estimate_baseline_asls
 
 def test_clean_signal_coerces_drops_sorts_and_averages_duplicates():
     frame = pd.DataFrame({"time": [2, 1, 1, 3, 4, 5], "absorbance": [4, 2, 4, "bad", np.inf, 7]})
@@ -39,3 +40,16 @@ def test_read_csv_bytes_supports_semicolon_delimiter_and_bom():
     frame = read_csv_bytes("time;signal\n0;1\n1;2\n".encode("utf-8-sig"))
     assert list(frame.columns) == ["time", "signal"]
     assert frame["signal"].tolist() == [1, 2]
+
+def test_asls_estimates_sloped_baseline_under_positive_peaks():
+    x = np.linspace(0, 100, 501)
+    baseline = 0.2 + 0.002 * x
+    signal = baseline + np.exp(-0.5 * ((x - 30) / 3) ** 2) + 0.6 * np.exp(-0.5 * ((x - 72) / 5) ** 2)
+    estimated = estimate_baseline_asls(signal, smoothness=1_000_000, asymmetry=0.01)
+    corrected = signal - estimated
+    assert np.mean(np.abs(estimated - baseline)) < 0.02
+    assert corrected.max() == pytest.approx(1.0, rel=0.05)
+
+def test_asls_rejects_invalid_parameters():
+    with pytest.raises(ValueError, match="asymmetry"):
+        estimate_baseline_asls(np.ones(5), asymmetry=0.5)
