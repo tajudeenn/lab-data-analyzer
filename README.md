@@ -13,6 +13,7 @@ A small Python and Streamlit application for exploring instrument CSV exports. T
 - Optionally estimate and subtract a smooth asymmetric-least-squares (AsLS) baseline, with a raw/baseline/corrected overlay and export of all three signals.
 - Integrate peaks above a straight line between their prominence bases using trapezoidal integration.
 - Download the cleaned signal and peak table as CSV files.
+- Fit linear calibration curves from concentration/peak-response standards, report R², estimate unknown concentrations, and download fit results.
 - Run numerical unit tests with pytest.
 
 ## Setup
@@ -39,6 +40,8 @@ streamlit run app.py
 
 Choose **Use bundled demonstration chromatogram** to try the app without an instrument file. For your data, upload a CSV and select the x and signal columns. The x-axis may be time, wavelength, or wavenumber; the signal may be intensity, absorbance, or another numeric response.
 
+To build a calibration, upload a separate standards CSV in the **Calibration curve** section with at least three distinct known concentrations and their peak responses. Select the concentration and response columns, then enter an unknown sample's integrated response. The app fits an ordinary least-squares linear model and warns when the unknown response falls outside the standards' measured range. Use standards and unknowns measured with the same method and units; inspect the fit before using a concentration estimate.
+
 ## Run tests
 
 ```bash
@@ -63,6 +66,6 @@ Peak detection uses SciPy local maxima and prominence. Each area is the trapezoi
 
 ## Roadmap
 
-1. Add calibration curves, R², and LOD / LOQ calculations with validated examples.
+1. Add LOD / LOQ calculations with validated examples.
 2. Support vendor preambles, more export conventions, and user-selected integration boundaries.
 3. Add downloadable PDF reports, expanded scientific validation, and portfolio documentation.

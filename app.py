@@ -1,9 +1,15 @@
 """Streamlit interface for exploratory HPLC and spectroscopy CSV analysis."""
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from lab_analyzer.analysis import clean_signal, detect_peaks, read_csv_bytes
 from lab_analyzer.baseline import estimate_baseline_asls
+from lab_analyzer.calibration import (
+    estimate_concentration,
+    fit_linear_calibration,
+    prepare_calibration_data,
+)
 
 st.set_page_config(page_title="Lab Data Analyzer", page_icon="🧪", layout="wide")
 st.title("🧪 Lab Data Analyzer")
@@ -125,3 +131,88 @@ col1.download_button(signal_download_label, signal_export.to_csv(index=False).en
                       file_name=signal_download_name, mime="text/csv")
 col2.download_button("Download peak results CSV", peaks.to_csv(index=False).encode("utf-8"),
                       file_name="peak_results.csv", mime="text/csv", disabled=peaks.empty)
+
+st.divider()
+st.header("Calibration curve")
+st.caption("Upload calibration standards with known concentrations and their integrated peak responses. Replicate standards are allowed.")
+calibration_upload = st.file_uploader("Upload calibration standards CSV", type=["csv", "txt"], key="calibration_upload")
+if calibration_upload is not None:
+    try:
+        calibration_raw = read_csv_bytes(calibration_upload.getvalue())
+    except ValueError as exc:
+        st.error(str(exc))
+    else:
+        if len(calibration_raw.columns) < 2:
+            st.error("The calibration CSV needs separate concentration and response columns.")
+        else:
+            concentration_column, response_column = st.columns(2)
+            concentration_name = concentration_column.selectbox(
+                "Concentration column", options=list(calibration_raw.columns), index=0, key="calibration_concentration"
+            )
+            response_name = response_column.selectbox(
+                "Peak response column", options=list(calibration_raw.columns), index=1, key="calibration_response"
+            )
+            try:
+                standards, dropped_standards = prepare_calibration_data(
+                    calibration_raw, concentration_name, response_name
+                )
+                calibration = fit_linear_calibration(
+                    standards["concentration"].to_numpy(), standards["response"].to_numpy()
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                if dropped_standards:
+                    st.warning(f"Ignored {dropped_standards} row(s) with missing or nonnumeric concentration/response values.")
+                calibrated = standards.assign(
+                    fitted_response=calibration.slope * standards["concentration"] + calibration.intercept
+                )
+                curve_x = np.linspace(standards["concentration"].min(), standards["concentration"].max(), 200)
+                curve = go.Figure()
+                curve.add_trace(go.Scatter(
+                    x=standards["concentration"], y=standards["response"], mode="markers",
+                    name="Calibration standards", marker={"color": "#e4572e", "size": 9},
+                ))
+                curve.add_trace(go.Scatter(
+                    x=curve_x, y=calibration.slope * curve_x + calibration.intercept,
+                    mode="lines", name="Linear fit", line={"color": "#2563eb"},
+                ))
+                curve.update_layout(
+                    title="Calibration: peak response versus concentration",
+                    xaxis_title=concentration_name, yaxis_title=response_name,
+                    height=400, margin={"l": 10, "r": 10, "t": 55, "b": 10},
+                )
+                st.plotly_chart(curve, width="stretch", alt="Calibration standards and fitted linear regression")
+                st.caption(
+                    f"Peak response = {calibration.slope:.6g} × concentration "
+                    f"+ {calibration.intercept:.6g}  ·  R² = {calibration.r_squared:.5f}"
+                )
+                unknown_response = st.number_input(
+                    "Unknown sample peak response",
+                    min_value=0.0,
+                    value=float(standards["response"].median()),
+                    step=0.1,
+                    key="unknown_calibration_response",
+                    help="Enter the integrated peak area or response for the unknown sample.",
+                )
+                unknown_concentration = estimate_concentration(unknown_response, calibration)
+                st.metric("Estimated unknown concentration", f"{unknown_concentration:.6g} {concentration_name}")
+                if not standards["response"].min() <= unknown_response <= standards["response"].max():
+                    st.warning("The unknown response is outside the standards' response range; this estimate extrapolates beyond the calibration curve.")
+                fit_report = pd.DataFrame([{
+                    "slope": calibration.slope,
+                    "intercept": calibration.intercept,
+                    "r_squared": calibration.r_squared,
+                    "unknown_response": unknown_response,
+                    "estimated_concentration": unknown_concentration,
+                    "concentration_units": concentration_name,
+                }])
+                download_standards, download_report = st.columns(2)
+                download_standards.download_button(
+                    "Download fitted standards CSV", calibrated.to_csv(index=False).encode("utf-8"),
+                    file_name="calibration_fit.csv", mime="text/csv",
+                )
+                download_report.download_button(
+                    "Download unknown estimate CSV", fit_report.to_csv(index=False).encode("utf-8"),
+                    file_name="unknown_concentration.csv", mime="text/csv",
+                )

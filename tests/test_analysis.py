@@ -3,6 +3,11 @@ import pandas as pd
 import pytest
 from lab_analyzer.analysis import clean_signal, detect_peaks, read_csv_bytes
 from lab_analyzer.baseline import estimate_baseline_asls
+from lab_analyzer.calibration import (
+    estimate_concentration,
+    fit_linear_calibration,
+    prepare_calibration_data,
+)
 
 def test_clean_signal_coerces_drops_sorts_and_averages_duplicates():
     frame = pd.DataFrame({"time": [2, 1, 1, 3, 4, 5], "absorbance": [4, 2, 4, "bad", np.inf, 7]})
@@ -53,3 +58,28 @@ def test_asls_estimates_sloped_baseline_under_positive_peaks():
 def test_asls_rejects_invalid_parameters():
     with pytest.raises(ValueError, match="asymmetry"):
         estimate_baseline_asls(np.ones(5), asymmetry=0.5)
+
+def test_linear_calibration_fits_curve_and_estimates_unknown():
+    concentration = np.array([0.5, 1.0, 2.0, 3.0, 4.0])
+    response = 100 * concentration + 5
+    fit = fit_linear_calibration(concentration, response)
+    assert fit.slope == pytest.approx(100)
+    assert fit.intercept == pytest.approx(5)
+    assert fit.r_squared == pytest.approx(1.0)
+    assert estimate_concentration(305, fit) == pytest.approx(3.0)
+
+def test_prepare_calibration_data_drops_invalid_rows_and_keeps_replicates():
+    frame = pd.DataFrame({"concentration": [0, 1, 1, 2, 3], "area": [3, 13, 13.2, "bad", 33]})
+    standards, removed = prepare_calibration_data(frame, "concentration", "area")
+    assert removed == 1
+    assert len(standards) == 4
+    assert standards["concentration"].tolist() == [0, 1, 1, 3]
+
+def test_linear_calibration_requires_three_distinct_standards():
+    with pytest.raises(ValueError, match="three distinct concentrations"):
+        fit_linear_calibration(np.array([1, 1, 2]), np.array([10, 11, 20]))
+
+def test_estimate_concentration_rejects_negative_response():
+    fit = fit_linear_calibration(np.array([1, 2, 3]), np.array([10, 20, 30]))
+    with pytest.raises(ValueError, match="nonnegative"):
+        estimate_concentration(-1, fit)
